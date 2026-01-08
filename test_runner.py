@@ -85,4 +85,4 @@ print(f"Summary: {passed_count}/{total} passed ({percentage:.1f}%)")
 if failed_count > 0:
     print(f"Failed: {failed_count} tests")
 else:
-    print("All tests passed! 🚀")
+    print("All tests passed!")
