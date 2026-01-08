@@ -15,12 +15,14 @@ typedef struct {
     uint8_t *code;         // Bytecode array
     int pc;                // Program Counter
     int running;
+    int error;             // Error flag
 } VM;
 
 // Helper to handle runtime errors safely
 void error(VM *vm, const char *msg) {
     fprintf(stderr, "Runtime Error: %s\n", msg);
     vm->running = 0;
+    vm->error = 1;
 }
 
 void push(VM *vm, int32_t val) {
@@ -44,6 +46,7 @@ void run_vm(VM *vm) {
     vm->sp = -1;
     vm->rsp = -1;
     vm->running = 1;
+    vm->error = 0;
 
     // We assume the code size is large enough or trusted, assuming proper loader checks.
     // In a real VM, you'd also check bounds of vm->pc against code size.
@@ -175,6 +178,7 @@ void run_vm(VM *vm) {
         default:
             fprintf(stderr, "Unknown Opcode: 0x%02X\n", opcode);
             vm->running = 0;
+            vm->error = 1;
         }
     }
 }
@@ -203,11 +207,11 @@ int main(int argc, char **argv) {
     VM vm = { .code = code };
     run_vm(&vm);
     
-    if (vm.sp >= 0)
+    if (!vm.error && vm.sp >= 0)
         printf("Top of stack: %d\n", vm.stack[vm.sp]);
-    else
+    else if (!vm.error)
         printf("Stack empty\n");
 
     free(code);
-    return 0;
+    return vm.error ? 1 : 0;
 }
