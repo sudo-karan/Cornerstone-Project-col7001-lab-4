@@ -23,11 +23,11 @@ The following diagram illustrates the VM's memory organization, highlighting the
 
 ```text
          VIRTUAL CPU                             MEMORY SPACE
-    +-------------------+                  +----------------------+
-    |                   |    Indexes       |                      |
-    |  Program Counter  |----------------->|   Bytecode Instructions  |
-    |       (PC)        |                  |      (Read-Only)     |
-    |                   |                  +----------------------+
+    +-------------------+                  +-----------------------+
+    |                   |    Indexes       |                       |
+    |  Program Counter  |----------------->| Bytecode Instructions |
+    |       (PC)        |                  |      (Read-Only)      |
+    |                   |                  +-----------------------+
     |                   |
     |                   |    Manages       +----------------------+
     |   Stack Pointer   |----------------->|                      |
