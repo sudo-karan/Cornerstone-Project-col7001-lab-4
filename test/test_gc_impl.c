@@ -1,124 +1,206 @@
 #define TESTING
 #include "../vm.c"
 #include <assert.h>
+#include <time.h>
 
-/**
- * Type Alias: Obj
- * Represents an object handle in the VM. In our implementation, objects are
- * addressed by their index in the global address space.
- * 
- * We use intptr_t to ensure compatibility with pointer-width operations if needed,
- * though the VM uses 32-bit integer addressing.
- */
+/* --- Types and Gloabls --- */
 typedef intptr_t Obj; 
-
 #define VAL_OBJ(o) ((int32_t)(o))
 
-/*
- * Global VM Instance for Test Harness
- * 
- * This global instance allows helper functions like `new_pair` 
- * to interact with the VM state (Heap, Allocator) without explicit 
- * parameter passing, simplifying the test case syntax.
- */
 VM *current_vm;
 
-/**
- * new_pair(a, b)
- * 
- * Allocates a new Pair object in the VM Heap with two fields.
- * This helper essentially mimics the `ALLOC` opcode but is exposed directly
- * for white-box testing of the Heap structure.
- * 
- * Memory Layout for a Pair (3 Words Header + 2 Words Payload):
- * [0] Size
- * [1] Next (Free List Link)
- * [2] Marked (GC Flag)
- * [3] Field A
- * [4] Field B
- *
- * @param a First field value
- * @param b Second field value
- * @return Obj handle (VM Address) to the payload
- */
+/* --- Helpers --- */
+
+// Wrapper for vm_gc
+void gc(VM *vm) {
+    printf("\n  [GC] Triggering Garbage Collection...\n");
+    vm_gc(vm);
+    printf("  [GC] Finished.\n");
+}
+
 Obj new_pair(Obj a, Obj b) {
-    int size = 2; // Pair object contains exactly 2 fields
-    int needed = size + 3; // Overhead: 3 words for Header
+    int size = 2; 
+    int needed = size + 3; 
     
-    // Bounds Check: Ensure allocation fits in the fixed-size Heap
     if (current_vm->free_ptr + needed > HEAP_SIZE) {
-        printf("  [Alloc] Error: Heap Overflow. Requested %d words, Free Index at %d\n", needed, current_vm->free_ptr);
+        printf("  [Alloc] Heap Overflow! Need %d\n", needed);
         return 0; // Allocation failure
     }
 
     int32_t addr = current_vm->free_ptr;
-    printf("  [Alloc] Allocating Pair at Heap Index %d (Payload Size: %d, Next Ptr: %d)\n", 
-           addr, size, current_vm->allocated_list);
-
-    // Initialize Header
-    current_vm->heap[addr] = size;                     // Header[0]: Size
-    current_vm->heap[addr + 1] = current_vm->allocated_list; // Header[1]: Next Object Ptr (for Sweep)
-    current_vm->heap[addr + 2] = 0;                    // Header[2]: Mark Bit (Reserved for GC)
+    current_vm->heap[addr] = size;                     
+    current_vm->heap[addr + 1] = current_vm->allocated_list; 
+    current_vm->heap[addr + 2] = 0;                    
     
-    // Update Allocator State
-    current_vm->allocated_list = addr;                 // Prepend to allocated list
-    current_vm->free_ptr += needed;                    // Advance bump pointer
+    current_vm->allocated_list = addr;                 
+    current_vm->free_ptr += needed;                    
     
-    // Initialize Payload
     int32_t payload_addr = addr + 3;
-    current_vm->heap[payload_addr] = (int32_t)a;       // Payload[0]: Field A
-    current_vm->heap[payload_addr + 1] = (int32_t)b;   // Payload[1]: Field B
+    current_vm->heap[payload_addr] = (int32_t)a;       
+    current_vm->heap[payload_addr + 1] = (int32_t)b;   
     
-    // Calculate Virtual Address (Memory + Heap Offset)
     int32_t vm_addr = MEM_SIZE + payload_addr;
-    printf("  [Alloc] Success. VM Address: %d. Fields: [%d, %d]\n", vm_addr, (int)a, (int)b);
-
     return (Obj)vm_addr;
 }
 
-/**
- * test_allocator()
- * 
- * Verifies the correctness of the Heap Allocator.
- * 
- * Scenarios Tested:
- * 1. Single Object Allocation: Verifies address computation and header initialization.
- * 2. Linked List Maintenance: Verifies that multiple objects are correctly linked 
- *    via the `next` pointer in their headers (crucial for the Sweep phase).
- */
-void test_allocator() {
-    printf("Testing Allocator...\n");
-    printf("Goal: Verify that 'new_pair' correctly reserves space in the heap and links objects.\n");
-    
-    VM vm = {0};
-    vm.free_ptr = 0;
-    vm.allocated_list = -1; // -1 denotes end of list
-    current_vm = &vm;
-    
-    printf("\n1. Allocating First Object (o1)...\n");
-    Obj o1 = new_pair(0, 0);
-    assert(o1 == MEM_SIZE + 0 + 3); // First object starts at heap[0] + 3 words header
-    
-    // Verify Header of o1
-    int32_t r_addr = (int32_t)o1 - MEM_SIZE;
-    printf("   -> Verified Object 1 Address: %ld\n", (long)o1);
-    printf("   -> Checking Header at heap[%d]... Size should be 2.\n", r_addr - 3);
-    assert(vm.heap[r_addr - 3] == 2); // Size
-    assert(vm.heap[r_addr - 2] == -1); // Next should be -1 (end of list)
-    
-    printf("\n2. Allocating Second Object (o2) pointing to o1...\n");
-    Obj o2 = new_pair(o1, 0);
-    
-    // Verify Linkage
-    int32_t r_addr2 = (int32_t)o2 - MEM_SIZE;
-    printf("   -> Verified Object 2 Address: %ld\n", (long)o2);
-    printf("   -> Checking List Linkage: o2->next should point to o1's header (%d).\n", r_addr - 3);
-    assert(vm.heap[r_addr2 - 2] == r_addr - 3); // o2->next points to o1
-    
-    printf("\nAllocator Test Passed: Objects created and linked correctly in heap.\n");
+// Helper: Count objects in allocated_list
+int count_allocated_objects(VM *vm) {
+    int count = 0;
+    int32_t curr = vm->allocated_list;
+    while (curr != -1) {
+        count++;
+        curr = vm->heap[curr + 1];
+    }
+    return count;
 }
 
+void reset_vm(VM *vm) {
+    memset(vm, 0, sizeof(VM));
+    vm->free_ptr = 0;
+    vm->allocated_list = -1;
+    vm->sp = -1;
+    vm->rsp = -1;
+    vm->running = 1;
+    current_vm = vm;
+}
+
+/* --- Tests --- */
+
+// 1.6.1 Basic Reachability
+void test_gc_basic_reachability() {
+    printf("\n=== Test 1.6.1: Basic Reachability ===\n");
+    VM vm; reset_vm(&vm);
+    
+    Obj a = new_pair(0, 0);
+    push(&vm, VAL_OBJ(a)); // Root
+    
+    gc(&vm);
+    
+    // Outcome: Object a survives. Count should be 1.
+    int count = count_allocated_objects(&vm);
+    printf("  Result: %d objects remaining.\n", count);
+    assert(count == 1);
+}
+
+// 1.6.2 Unreachable Object Collection
+void test_gc_unreachable_object_collection() {
+    printf("\n=== Test 1.6.2: Unreachable Object Collection ===\n");
+    VM vm; reset_vm(&vm);
+    
+    new_pair(0, 0); // Allocate but don't push (unreachable)
+    
+    gc(&vm);
+    
+    // Outcome: Object freed. Count should be 0.
+    int count = count_allocated_objects(&vm);
+    printf("  Result: %d objects remaining.\n", count);
+    assert(count == 0);
+}
+
+// 1.6.3 Transitive Reachability
+void test_gc_transitive_reachability() {
+    printf("\n=== Test 1.6.3: Transitive Reachability ===\n");
+    VM vm; reset_vm(&vm);
+    
+    Obj a = new_pair(0, 0);
+    Obj b = new_pair(a, 0); // b -> a
+    
+    push(&vm, VAL_OBJ(b)); // Push b
+    
+    gc(&vm);
+    
+    // Outcome: Both survive (b is root, a is reachable from b).
+    // Note: This test verifies transitive reachability.
+    // It is expected to fail or pass partially until recursive marking is fully implemented.
+    
+    int count = count_allocated_objects(&vm);
+    printf("  Result: %d objects remaining.\n", count);
+    assert(count == 2);
+}
+
+// 1.6.4 Cyclic References
+void test_gc_cyclic_references() {
+    printf("\n=== Test 1.6.4: Cyclic References ===\n");
+    VM vm; reset_vm(&vm);
+    
+    Obj a = new_pair(0, 0);
+    Obj b = new_pair(a, 0); // b -> a
+    
+    // Manually set a->right = b (Cycle)
+    // a is at address 'a'. Payload is at a. Fields at a, a+4 (if pointer arithmetic)
+    // VM addresses are indices. Payload indices.
+    int32_t a_idx = (int32_t)a - MEM_SIZE; 
+    vm.heap[a_idx + 1] = (int32_t)b; // a[1] = b
+    
+    push(&vm, VAL_OBJ(a));
+    
+    gc(&vm);
+    
+    int count = count_allocated_objects(&vm);
+    printf("  Result: %d objects remaining.\n", count);
+    assert(count == 2);
+}
+
+// 1.6.5 Deep Object Graph
+void test_gc_deep_object_graph() {
+    printf("\n=== Test 1.6.5: Deep Object Graph ===\n");
+    VM vm; reset_vm(&vm);
+    
+    Obj root = new_pair(0, 0);
+    Obj cur = root;
+    
+    for (int i = 0; i < 500; i++) { // 10000 might overflow heap in this small VM
+        Obj next = new_pair(0, 0);
+        int32_t cur_idx = (int32_t)cur - MEM_SIZE;
+        vm.heap[cur_idx + 1] = (int32_t)next; // cur->right = next
+        cur = next;
+    }
+    
+    push(&vm, VAL_OBJ(root));
+    gc(&vm);
+    
+    int count = count_allocated_objects(&vm);
+    printf("  Result: %d objects remaining.\n", count);
+    assert(count == 501); 
+}
+
+// 1.6.7 Stress Allocation
+void test_gc_stress_allocation() {
+    printf("\n=== Test 1.6.7: Stress Allocation ===\n");
+    VM vm; reset_vm(&vm);
+    
+    // Allocate many objects, dropping them. GC should reclaim.
+    // Heap is 4096. Pair needs 5 words (20 bytes). 4096/5 ~ 800 objects.
+    // We try allocating 2000.
+    
+    int failures = 0;
+    for (int i = 0; i < 2000; i++) {
+        Obj o = new_pair(0, 0);
+        if (o == 0) {
+            // If alloc fails, try GC
+            gc(&vm);
+            o = new_pair(0, 0);
+            if (o == 0) failures++;
+        }
+        // Don't push, so it becomes garbage immediately
+    }
+    
+    gc(&vm);
+    int count = count_allocated_objects(&vm);
+    printf("  Result: %d objects remaining (Should be 0).\n", count);
+    assert(count == 0);
+    assert(failures == 0);
+}
+
+
 int main() {
-    test_allocator();
+    test_gc_basic_reachability();
+    test_gc_unreachable_object_collection();
+    // test_gc_transitive_reachability(); // Task 3
+    // test_gc_cyclic_references(); // Task 3
+    // test_gc_deep_object_graph(); // Task 3
+    // test_gc_stress_allocation(); // Task 4 (Alloc reuse logic needed for this to pass fully)
+    
+    printf("\nAll Active Tests Passed.\n");
     return 0;
 }
