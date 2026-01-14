@@ -199,7 +199,7 @@ int main() {
     test_gc_transitive_reachability();
     test_gc_cyclic_references();
     test_gc_deep_object_graph();
-    // test_gc_stress_allocation();
+    test_gc_stress_allocation();
     
     printf("\nAll Active Tests Passed.\n");
     return 0;
