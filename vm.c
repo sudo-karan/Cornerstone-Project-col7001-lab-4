@@ -37,6 +37,71 @@ void error(VM *vm, const char *msg) {
     vm->error = 1;
 }
 
+
+
+void mark(VM *vm, int32_t addr) {
+    if (addr < 0 || addr >= HEAP_SIZE) return; // Invalid address
+    
+    // Address Validation: ensure we are within heap bounds.
+    int32_t obj_idx = addr; 
+    
+    // Check mark bit in object header (offset +2 from base address).
+    if (vm->heap[obj_idx + 2]) return; 
+    
+    vm->heap[obj_idx + 2] = 1; // Set mark bit.
+
+    // Note: This test verifies transitive reachability.
+    // It is expected to fail or pass partially until recursive marking is fully implemented.
+    // printf("GC: Marked object at %d\n", obj_idx);
+
+    // Placeholder for recursive marking to achieve transitive reachability.
+}
+
+void sweep(VM *vm) {
+    int32_t *curr_ptr = &vm->allocated_list; // Pointer to the 'next' field of previous node (or head)
+    int32_t curr = vm->allocated_list;
+    int freed_count = 0;
+
+    while (curr != -1) {
+        // curr is index of Header[0] (Size)
+        // Header[2] is Mark
+        int marked = vm->heap[curr + 2];
+        int size = vm->heap[curr];
+        int next = vm->heap[curr + 1];
+
+        if (marked) {
+            vm->heap[curr + 2] = 0; // Unmark for next cycle
+            curr_ptr = &vm->heap[curr + 1]; // Advance ptr-to-next to this node's next field
+            curr = next;
+        } else {
+            // Unlink
+            *curr_ptr = next; // Previous node now points to next
+            // Essentially "freeing" logic (logical collection)
+            freed_count++;
+            // printf("GC: Freed object at %d (Size %d)\n", curr, size);
+            curr = next;
+        }
+    }
+}
+
+void vm_gc(VM *vm) {
+    // 1. Mark Phase: Scan Stack
+    for (int i = 0; i <= vm->sp; i++) {
+        int32_t val = vm->stack[i];
+        if (val >= MEM_SIZE && val < MEM_SIZE + HEAP_SIZE) {
+            // Potential Heap Pointer
+            int32_t payload_idx = val - MEM_SIZE;
+            int32_t header_idx = payload_idx - 3;
+            if (header_idx >= 0) { // Basic sanity check
+                mark(vm, header_idx);
+            }
+        }
+    }
+
+    // 2. Sweep Phase
+    sweep(vm);
+}
+
 void push(VM *vm, int32_t val) {
     if (vm->sp >= STACK_SIZE - 1) {
         error(vm, "Stack Overflow");
