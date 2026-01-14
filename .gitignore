@@ -4,3 +4,4 @@ vm
 test_gc
 __pycache__/
 test_gc_run
+test_results.txt
