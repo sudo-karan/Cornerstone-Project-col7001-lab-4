@@ -1,2 +1,5 @@
+*.o
+*.bin
 vm
-test.bin
+test_gc
+__pycache__/
