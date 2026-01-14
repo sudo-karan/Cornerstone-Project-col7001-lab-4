@@ -28,5 +28,6 @@
 // Standard Library
 #define PRINT 0x50
 #define INPUT 0x51
+#define ALLOC 0x60
 
 #endif

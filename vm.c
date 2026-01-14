@@ -7,11 +7,21 @@
 
 #define STACK_SIZE 256
 #define MEM_SIZE 1024
+#define HEAP_SIZE 4096
+
+typedef struct {
+    int32_t size;      // Size of payload
+    int32_t next;      // Next object in allocated list
+    uint8_t marked;    // Mark bit
+} ObjectHeader;
 
 typedef struct {
     int32_t stack[STACK_SIZE];
     int sp;                // Stack Pointer
     int32_t memory[MEM_SIZE];
+    int32_t heap[HEAP_SIZE];
+    int32_t free_ptr;      // Simple bump pointer for now
+    int32_t allocated_list; // Head of allocated objects list
     uint32_t return_stack[STACK_SIZE];
     int rsp;               // Return Stack Pointer
     uint8_t *code;         // Bytecode array
@@ -48,7 +58,13 @@ void run_vm(VM *vm) {
     vm->sp = -1;
     vm->rsp = -1;
     vm->running = 1;
+    vm->pc = 0;
+    vm->sp = -1;
+    vm->rsp = -1;
+    vm->running = 1;
     vm->error = 0;
+    vm->free_ptr = 0; // Start at beginning of heap
+    vm->allocated_list = -1; // -1 indicates end of list
 
     // We assume the code size is large enough or trusted, assuming proper loader checks.
     // In a real VM, you'd also check bounds of vm->pc against code size.
@@ -139,10 +155,17 @@ void run_vm(VM *vm) {
             int32_t val = pop(vm);
             if (!vm->running) break;
             
-            if (idx < 0 || idx >= MEM_SIZE) {
+            if (idx < 0) {
                 error(vm, "Memory Access Out of Bounds");
-            } else {
+            } else if (idx < MEM_SIZE) {
                 vm->memory[idx] = val;
+            } else {
+                int heap_idx = idx - MEM_SIZE;
+                if (heap_idx >= HEAP_SIZE) {
+                    error(vm, "Heap Access Out of Bounds");
+                } else {
+                    vm->heap[heap_idx] = val;
+                }
             }
             break;
         }
@@ -150,10 +173,17 @@ void run_vm(VM *vm) {
             int32_t idx = *(int32_t*)&vm->code[vm->pc];
             vm->pc += 4;
             
-            if (idx < 0 || idx >= MEM_SIZE) {
+            if (idx < 0) {
                 error(vm, "Memory Access Out of Bounds");
-            } else {
+            } else if (idx < MEM_SIZE) {
                 push(vm, vm->memory[idx]);
+            } else {
+                int heap_idx = idx - MEM_SIZE;
+                if (heap_idx >= HEAP_SIZE) {
+                    error(vm, "Heap Access Out of Bounds");
+                } else {
+                    push(vm, vm->heap[heap_idx]);
+                }
             }
             break;
         }
@@ -205,6 +235,29 @@ void run_vm(VM *vm) {
             break;
         }
 
+        case ALLOC: {
+            int32_t size = pop(vm);
+            if (size < 0) { error(vm, "Invalid Allocation Size"); break; }
+            
+            int needed = size + 3; 
+            if (vm->free_ptr + needed > HEAP_SIZE) {
+                error(vm, "Heap Overflow");
+                break;
+            }
+
+            int32_t addr = vm->free_ptr;
+            vm->heap[addr] = size;     // SIZE
+            vm->heap[addr + 1] = vm->allocated_list; // NEXT
+            vm->heap[addr + 2] = 0;    // MARKED
+            
+            vm->allocated_list = addr;
+            vm->free_ptr += needed;
+            
+            // Return pointer to PAYLOAD (skip header)
+            push(vm, MEM_SIZE + addr + 3);
+            break;
+        }
+
         default:
             fprintf(stderr, "Unknown Opcode: 0x%02X\n", opcode);
             vm->running = 0;
@@ -213,7 +266,11 @@ void run_vm(VM *vm) {
     }
 }
 
+#ifndef TESTING
 int main(int argc, char **argv) {
+#else
+int run_vm_main(int argc, char **argv) {
+#endif
     if (argc < 2) return 1;
     FILE *f = fopen(argv[1], "rb");
     if (!f) {

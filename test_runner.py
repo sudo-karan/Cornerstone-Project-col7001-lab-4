@@ -39,6 +39,34 @@ jit_passed_count = 0
 jit_failed_count = 0
 jit_skipped_count = 0
 
+# --- C Unit Tests ---
+print("Running C Unit Tests...")
+c_tests = ["test/test_gc_impl.c"]
+c_passed = 0
+c_failed = 0
+
+for c_test in c_tests:
+    exe_path = c_test.replace(".c", "")
+    try:
+        # Compile
+        subprocess.check_call(
+            ["gcc", "-I.", c_test, "jit.c", "-o", exe_path],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL
+        )
+        # Run
+        subprocess.check_call([f"./{os.path.basename(exe_path)}"], cwd=os.path.dirname(exe_path) or ".")
+        print(f"{c_test:<25} | {'(Unit)':<15} | {'Success':<25} | {'PASS':<10}")
+        c_passed += 1
+    except subprocess.CalledProcessError:
+        print(f"{c_test:<25} | {'(Unit)':<15} | {'Failure':<25} | {'FAIL':<10}")
+        c_failed += 1
+    finally:
+        if os.path.exists(exe_path):
+            os.remove(exe_path)
+print("-" * 85)
+
+
 for test_file, expected_val, expected_err, input_str in tests:
     asm_path = os.path.join("test", test_file)
     bin_path = asm_path.replace(".asm", ".bin")
@@ -165,19 +193,21 @@ for test_file, expected_val, expected_err, input_str in tests:
 # Summary
 total_interp = passed_count + failed_count
 total_jit = jit_passed_count + jit_failed_count + jit_skipped_count
-total_all = total_interp + total_jit
+total_c = c_passed + c_failed
+total_all = total_interp + total_jit + total_c
 
 pass_all = passed_count + jit_passed_count
 perc = (pass_all / (total_interp + jit_passed_count + jit_failed_count) * 100) if (total_interp + jit_passed_count + jit_failed_count) > 0 else 0
 
 output_lines = []
 output_lines.append("-" * 85)
+output_lines.append(f"C Units:     {c_passed}/{total_c} passed")
 output_lines.append(f"Interpreter: {passed_count}/{total_interp} passed")
 output_lines.append(f"JIT:         {jit_passed_count}/{total_jit} passed ({jit_skipped_count} skipped)")
-output_lines.append(f"Total:       {pass_all}/{total_interp + jit_passed_count + jit_failed_count} passed ({perc:.1f}%)")
+output_lines.append(f"Total:       {pass_all + c_passed}/{total_all} passed ({perc:.1f}%)")
 
-if failed_count > 0 or jit_failed_count > 0:
-    output_lines.append(f"Failures: {failed_count} Interp, {jit_failed_count} JIT")
+if failed_count > 0 or jit_failed_count > 0 or c_failed > 0:
+    output_lines.append(f"Failures: {c_failed} C, {failed_count} Interp, {jit_failed_count} JIT")
 else:
     output_lines.append("All tests passed!")
 
