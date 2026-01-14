@@ -43,6 +43,14 @@ Obj new_pair(Obj a, Obj b) {
     return (Obj)vm_addr;
 }
 
+Obj new_function() {
+    return new_pair(0, 0);
+}
+
+Obj new_closure(Obj fn, Obj env) {
+    return new_pair(fn, env);
+}
+
 // Helper: Count objects in allocated_list
 int count_allocated_objects(VM *vm) {
     int count = 0;
@@ -149,7 +157,7 @@ void test_gc_deep_object_graph() {
     Obj root = new_pair(0, 0);
     Obj cur = root;
     
-    for (int i = 0; i < 500; i++) { // 10000 might overflow heap in this small VM
+    for (int i = 0; i < 10000; i++) { // 10000 might overflow heap in this small VM
         Obj next = new_pair(0, 0);
         int32_t cur_idx = (int32_t)cur - MEM_SIZE;
         vm.heap[cur_idx + 1] = (int32_t)next; // cur->right = next
@@ -161,7 +169,26 @@ void test_gc_deep_object_graph() {
     
     int count = count_allocated_objects(&vm);
     printf("  Result: %d objects remaining.\n", count);
-    assert(count == 501); 
+    assert(count == 10001); 
+}
+
+// Closure Capture
+void test_gc_closure_capture() {
+    printf("\n=== Test: Closure Capture ===\n");
+    VM vm; reset_vm(&vm);
+    
+    Obj env = new_pair(0, 0);
+    Obj fn = new_function();
+    Obj cl = new_closure(fn, env);
+    
+    push(&vm, VAL_OBJ(cl));
+    
+    gc(&vm);
+    
+    // Outcome: Closure, function, and environment survive
+    int count = count_allocated_objects(&vm);
+    printf("  Result: %d objects remaining.\n", count);
+    assert(count == 3);
 }
 
 // Stress Allocation
@@ -174,7 +201,7 @@ void test_gc_stress_allocation() {
     // We try allocating 2000.
     
     int failures = 0;
-    for (int i = 0; i < 2000; i++) {
+    for (int i = 0; i < 100000; i++) {
         Obj o = new_pair(0, 0);
         if (o == 0) {
             // If alloc fails, try GC
@@ -199,6 +226,7 @@ int main() {
     test_gc_transitive_reachability();
     test_gc_cyclic_references();
     test_gc_deep_object_graph();
+    test_gc_closure_capture();
     test_gc_stress_allocation();
     
     printf("\nAll Active Tests Passed.\n");

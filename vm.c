@@ -7,7 +7,7 @@
 
 #define STACK_SIZE 256
 #define MEM_SIZE 1024
-#define HEAP_SIZE 4096
+#define HEAP_SIZE 65536
 
 typedef struct {
     int32_t size;      // Payload size in words
