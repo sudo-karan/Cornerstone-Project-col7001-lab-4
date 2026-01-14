@@ -196,10 +196,10 @@ void test_gc_stress_allocation() {
 int main() {
     test_gc_basic_reachability();
     test_gc_unreachable_object_collection();
-    // test_gc_transitive_reachability(); // Task 3
-    // test_gc_cyclic_references(); // Task 3
-    // test_gc_deep_object_graph(); // Task 3
-    // test_gc_stress_allocation(); // Task 4 (Alloc reuse logic needed for this to pass fully)
+    test_gc_transitive_reachability();
+    test_gc_cyclic_references();
+    test_gc_deep_object_graph();
+    // test_gc_stress_allocation();
     
     printf("\nAll Active Tests Passed.\n");
     return 0;
