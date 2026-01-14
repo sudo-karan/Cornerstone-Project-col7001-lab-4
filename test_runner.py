@@ -26,7 +26,7 @@ tests = [
     # Error Scenarios
     ("test_stack_underflow.asm", None, "Stack Underflow", None),
     ("test_stack_overflow.asm", None, "Stack Overflow", None),
-    ("test_mem_oob.asm", None, "Memory Access Out of Bounds", None),
+    ("test_mem_oob.asm", None, "Heap Access Out of Bounds", None),
     ("test_div_zero.asm", None, "Division by Zero", None),
 ]
 
