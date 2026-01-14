@@ -23,11 +23,18 @@ We have implemented a dynamic **Heap Allocator** to manage object memory.
 - **New Opcode:**
   - `ALLOC (0x60)`: Pops `size` from stack, allocates memory, pushes `address` to stack.
 
-### 2. Testing the Allocator
+### 2. Root Discovery (Task 2)
+
+We have implemented **Root Discovery** to identify active objects.
+
+- **Stack Scanning:** The GC iterates through the VM's data stack.
+- **Conservative Identification:** Values on the stack that fall within the specific Heap Memory range are treated as pointers and marked.
+
+### 3. Testing the Allocator & GC
 
 We have created a dedicated white-box C test harness to verify the internal state of the Heap (pointers, headers, linking) without relying on the full Assembler flow.
 
-**How to Run Allocator Tests:**
+**How to Run Tests:**
 
 ```bash
 # Compile and Run the C Unit Test
@@ -35,14 +42,26 @@ gcc -I. test/test_gc_impl.c jit.c -o test_gc && ./test_gc
 ```
 
 **Expected Output:**
-The test prints detailed logs of memory addresses and header states:
+The test prints detailed logs of memory addresses and header states.
 
-```
+**1. Allocator Test:**
+
+```text
 Testing Allocator...
 Goal: Verify that 'new_pair' correctly reserves space in the heap...
 [Alloc] Allocating Pair at Heap Index 0...
 [Alloc] Success. VM Address: 1027...
 Allocator Test Passed.
+```
+
+**2. Root Discovery (Basic Reachability):**
+
+```text
+=== Test: Basic Reachability ===
+
+  [GC] Triggering Garbage Collection...
+  [GC] Finished.
+  Result: 1 objects remaining.
 ```
 
 ---
