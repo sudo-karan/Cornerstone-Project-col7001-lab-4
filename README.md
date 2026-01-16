@@ -122,6 +122,21 @@ The VM has been extended with dynamic memory management, implementing a **Stop-t
 make clean && make
 ```
 
+### Run a Single Program
+
+To manually assemble and run a generic program (e.g., `test/test_factorial.asm`):
+
+```bash
+# 1. Assemble the program
+python3 assembler.py test/test_factorial.asm test/test_factorial.bin
+
+# 2. Run with Interpreter
+./vm test/test_factorial.bin
+
+# 3. (Optional) Run with JIT
+./vm test/test_factorial.bin --jit
+```
+
 ### Run Tests
 
 **Automated Suite (Assembly + GC Unit Tests):**
