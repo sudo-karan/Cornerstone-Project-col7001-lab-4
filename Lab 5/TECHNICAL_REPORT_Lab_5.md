@@ -62,6 +62,17 @@ The VM maintains specific state registers to manage the heap and GC:
 - **Allocated List Head (`allocated_list`):** Points to the most recently allocated object, forming a linked list of all objects.
 - **GC Stats Registers:** Stores runtime metrics (`gc_runs`, `freed_objects`, `total_gc_time`, `max_heap_used`).
 
+### 2.4 ISA Extension: Dynamic Memory
+
+Lab 5 introduces a critical new opcode to the Instruction Set Architecture to support dynamic memory.
+
+| Opcode | Mnemonic  | Stack Effect       | Description                                                            |
+| :----- | :-------- | :----------------- | :--------------------------------------------------------------------- |
+| `0x60` | **ALLOC** | `[size] -> [addr]` | Allocates `size` words on the heap. Pushes the address of the payload. |
+
+- **Complexity:** $O(1)$ (Best Case), bounded by GC time (Worst Case).
+- **Errors:** Triggers `Heap Overflow` (Fatal) if memory cannot be satisfied even after a GC cycle.
+
 ---
 
 ## 3. Core Mechanisms
@@ -97,10 +108,10 @@ The GC implements a classic **Mark-and-Sweep** algorithm. It is an "Exact" trace
 
 ```mermaid
 graph TD
-    Start[Heap Exhausted] --> Root[Root Discovery]
-    Root --> Mark[Mark Phase (DFS)]
-    Mark --> Sweep[Sweep Phase]
-    Sweep --> End[Resume Execution]
+    Start["Heap Exhausted"] --> Root["Root Discovery"]
+    Root --> Mark["Mark Phase (DFS)"]
+    Mark --> Sweep["Sweep Phase"]
+    Sweep --> End["Resume Execution"]
 ```
 
 #### 3.2.1 Root Discovery
@@ -139,11 +150,39 @@ The VM enforces strict safety protocols to ensure robust execution, as highlight
 - **Automatic Trigger:** The `ALLOC` opcode detects when the heap is full (`free_ptr + needed > HEAP_SIZE`) and automatically triggers `vm_gc()`.
 - **Retry Logic:** After GC, the allocator attempts the allocation again. If space is still insufficient (i.e., the heap is full of live objects), a fatal `Heap Overflow` error is raised, preventing corruption.
 
+### 3.4 Design Decisions & Trade-offs
+
+The choice of **Mark-and-Sweep** was made after comparing several alternatives suitable for an educational VM.
+
+| Strategy               | Pros                                           | Cons                                                                    | Verdict                                                   |
+| :--------------------- | :--------------------------------------------- | :---------------------------------------------------------------------- | :-------------------------------------------------------- |
+| **Reference Counting** | Immediate reclamation; easy to implement.      | Cannot handle cyclic references; high overhead on every assignment.     | **Rejected** due to cycle support requirement.            |
+| **Copying Collector**  | Eliminates fragmentation; fast allocation.     | Requires 2x memory (Semispaces); moving objects complicates C pointers. | **Rejected** due to memory efficiency.                    |
+| **Mark-Sweep**         | Basic cycle support; robust; simple allocator. | Stop-the-world pauses; fragmentation.                                   | **Chosen** as best balance of correctness and simplicity. |
+
 ---
 
-## 4. Performance Analysis
+## 4. Verification & Testing Methodology
 
-### 4.1 benchmarks & Metrics
+To ensure the reliability of the Garbage Collector, we employed a **White-Box Testing** strategy, inspecting internal VM state directly rather than just observing external behavior.
+
+### 4.1 Unit Testing Strategy
+
+We created a dedicated test harness (`test/test_gc_impl.c`) that bypasses the parser and interacts with the VM's C struct directly.
+
+- **Heap Inspection:** Tests count the number of nodes in `allocated_list` before and after GC to verify reclamation.
+- **Cycles:** Manually constructed topological cycles (`A->B`, `B->A`) in the heap to verify termination.
+- **Roots:** Pushed known pointers to the stack to verify "preservation" of live objects.
+
+### 4.2 Integration Testing
+
+We ran the full VM (`./vm`) against complex assembly programs (`benchmark/gc_stress.asm`) to verify that the `ALLOC` opcode correctly triggers GC and resumes execution without corrupting user data.
+
+---
+
+## 5. Performance Analysis
+
+### 5.1 Benchmarks & Metrics
 
 We evaluated the GC's performance using a stress test (`benchmark/gc_stress.asm`) that generates 100,000 objects.
 
@@ -160,9 +199,9 @@ The **Total GC Time** is extremely low (< 2% of total runtime), demonstrating th
 
 ---
 
-## 5. Limitations and Future Enhancements
+## 6. Limitations and Future Enhancements
 
-### 5.1 Correctness Validation
+### 6.1 Correctness Validation
 
 The implementation has been rigorously tested against:
 
@@ -170,13 +209,13 @@ The implementation has been rigorously tested against:
 - **Deep Graphs**: Tested with 10,000+ nodes.
 - **Stress Testing**: Verified robust behavior under heap pressure.
 
-### 5.2 Limitations
+### 6.2 Limitations
 
 1.  **Fragmentation**: The allocator is **non-moving**. It cannot fill "holes" left by freed objects (unless the entire heap is empty), leading to potential fragmentation.
 2.  **Stop-the-World**: Execution halts completely during GC.
 3.  **Conservative Roots**: Integers on the stack may occasionally be mistaken for pointers, preventing some garbage from being collected.
 
-### 5.3 Future Enhancements
+### 6.3 Future Enhancements
 
 1.  **Free List Allocator**: Replace Bump Pointer with a Free List to reuse fragmented memory holes.
 2.  **Generational GC**: Implement a Nursery/Tenured generation split to improve performance for short-lived objects.
